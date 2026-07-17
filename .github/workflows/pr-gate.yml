@@ -1,0 +1,74 @@
+name: PR Gate
+
+# Server-side quality gate: every PR needs a docs/features entry, a green
+# test suite, and test changes alongside source changes.
+#
+# The test job runs on macOS because test.sh needs plutil, sips, iconutil,
+# and osacompile. The coverage patterns treat shell scripts as source and
+# test.sh as the test suite. Branch and base names are read from the
+# runner's environment variables, never interpolated into scripts, because
+# pull-request branch names are attacker-controlled.
+
+on:
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  docs-gate:
+    name: Docs gate (features)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require docs/features entry
+        run: |
+          branch="${GITHUB_HEAD_REF}"
+          slug="${branch#feat/}"
+          slug="${slug#fix/}"
+          slug="${slug#chore/}"
+          slug="${slug#docs/}"
+          slug="${slug#refactor/}"
+          slug="${slug//\//-}"
+          echo "Branch slug: $slug"
+          if ! ls docs/features/*"$slug".md >/dev/null 2>&1; then
+            echo "::error::Missing docs/features/<date>-$slug.md for this branch."
+            echo "Add a feature-description markdown file under docs/features/ before merging."
+            exit 1
+          fi
+
+  tests:
+    name: Tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run test suite
+        run: make test
+
+  coverage-for-new-code:
+    name: New code has new tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check that changed source files have changed tests
+        run: |
+          git fetch origin "$GITHUB_BASE_REF"
+          changed=$(git diff --name-only "origin/${GITHUB_BASE_REF}...HEAD")
+          src_changed=$(echo "$changed" | grep -Ev '(^|/)(test|tests|__tests__|spec|docs|\.github)/' \
+            | grep -Ev '(_test\.go|\.test\.(ts|tsx|js|jsx)|\.spec\.(ts|tsx|js|jsx)|^test_|_spec\.rb)$' \
+            | grep -Ev '^test\.sh$' \
+            | grep -E '\.(py|ts|tsx|js|jsx|go|rs|rb|java|kt|sh)$' || true)
+          test_changed=$(echo "$changed" | grep -E '(^|/)(test|tests|__tests__|spec)/|_test\.go$|\.test\.(ts|tsx|js|jsx)$|\.spec\.(ts|tsx|js|jsx)$|(^|/)test_[^/]+\.py$|_spec\.rb$|^test\.sh$' || true)
+          if [ -n "$src_changed" ] && [ -z "$test_changed" ]; then
+            echo "::error::Source files changed but no test files changed:"
+            echo "$src_changed"
+            echo "Add tests covering the new behavior before merging."
+            exit 1
+          fi
+          echo "Source changes: $(echo "$src_changed" | wc -l) file(s)"
+          echo "Test changes:   $(echo "$test_changed" | wc -l) file(s)"
