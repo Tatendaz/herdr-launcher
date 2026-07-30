@@ -13,6 +13,10 @@ on:
   pull_request:
     branches: [main, master]
 
+# Every job only reads the checkout — nothing here writes through GITHUB_TOKEN.
+permissions:
+  contents: read
+
 jobs:
   docs-gate:
     name: Docs gate (features)
