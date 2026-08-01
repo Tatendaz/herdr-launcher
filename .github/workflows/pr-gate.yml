@@ -19,6 +19,8 @@ permissions:
 
 jobs:
   docs-gate:
+    # Dependabot bumps never carry docs entries; the docs gate is for human/agent PRs.
+    if: github.actor != 'dependabot[bot]'
     name: Docs gate (features)
     runs-on: ubuntu-latest
     steps:
