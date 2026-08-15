@@ -1,10 +1,10 @@
 # Herdr Launcher
 
-A Dock icon for [herdr](https://herdr.dev/). Click the ram, get herdr in a new terminal window.
+A Dock icon for [herdr](https://herdr.dev/). Click the ram, get herdr in a new terminal window — and the Dock's running dot while herdr is up.
 
 > **This is not the official herdr launcher.** It is a community project, not affiliated with or endorsed by the herdr team. herdr itself, its name, and the ram logo belong to the [herdr project](https://github.com/ogulcancelik/herdr).
 
-herdr is a terminal UI installed with `brew install herdr`, so there is no app to keep in the Dock. This repo builds one: a single shell script wrapped in a macOS `.app` bundle, with the herdr ram as its icon.
+herdr is a terminal UI installed with `brew install herdr`, so there is no app to keep in the Dock. This repo builds one: a stay-open AppleScript applet wrapped around a single shell script in a macOS `.app` bundle, with the herdr ram as its icon.
 
 ## Requirements
 
@@ -20,11 +20,30 @@ cd herdr-launcher
 ./build.sh --install
 ```
 
-`build.sh` assembles `dist/Herdr.app` and `--install` copies it to `/Applications`. It uses only tools that ship with macOS (`sips`, `iconutil`, `codesign`), so there is nothing to install first.
+`build.sh` assembles `dist/Herdr.app` and `--install` copies it to `/Applications`. It uses only tools that ship with macOS (`osacompile`, `sips`, `iconutil`, `codesign`), so there is nothing to install first.
 
 Then put it in the Dock: open `/Applications` in Finder and drag `Herdr` to the Dock, or launch it once and choose Options > Keep in Dock from its Dock menu.
 
 On first launch, macOS asks whether Herdr may control your terminal app. Click Allow. The permission lives under System Settings > Privacy & Security > Automation and is asked once.
+
+### Or let herdr install it
+
+The repo is also a herdr [workflow plugin](https://herdr.dev/docs/plugins/), so herdr 0.7.5 or newer can install it directly:
+
+```sh
+herdr plugin install Tatendaz/herdr-launcher
+```
+
+herdr shows the manifest's commands and asks before running anything; confirming runs the same `./build.sh --install`, which ends with `Herdr.app` in `/Applications`. The plugin exposes two actions, `install` and `uninstall`, to rebuild or remove the app later without leaving herdr.
+
+## The Dock running dot
+
+While herdr runs, the Dock tile carries the same running indicator as any other open app. Clicking the ram launches herdr and leaves a small launcher process resident; it polls every few seconds and quits itself shortly after your last herdr session exits, which is when the dot disappears. Clicking the icon while the dot is showing still opens another herdr window.
+
+Two edges worth knowing:
+
+- The dot tracks herdr processes, not windows: any number of sessions keep it lit, and it clears a few seconds after the last one ends.
+- herdr sessions started from a shell by hand do not light the dot; the indicator is the launcher process, and nothing started it. Right-clicking the Dock icon and choosing Quit removes the dot without touching running herdr sessions.
 
 ## Which terminal it opens, and how to change it
 
@@ -61,9 +80,11 @@ rm -rf /Applications/Herdr.app
 rm -rf ~/.config/herdr-launcher   # only if you created the config file
 ```
 
+If the Dock dot is showing, also right-click the icon and choose Quit; deleting the bundle does not stop the already-running launcher process.
+
 ## Adapting this for another CLI tool
 
-Nothing here is specific to herdr beyond two files: `src/launcher.sh` (the command it types and the paths it probes) and `assets/icon-1024.png` (the Dock icon). Swap those, rename the bundle in `src/Info.plist` and `build.sh`, and rebuild.
+Nothing here is specific to herdr beyond two files: `src/launcher.sh` (the command it types, the paths it probes, and the process name `herdr_running` polls for the Dock dot) and `assets/icon-1024.png` (the Dock icon). Swap those, rename the bundle in `src/Info.plist` and `build.sh`, and rebuild; `src/main.applescript` is generic and needs no changes.
 
 ## Icon
 
