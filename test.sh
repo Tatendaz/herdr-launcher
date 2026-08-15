@@ -47,8 +47,8 @@ awk -v dir="$tmp" '
 ' src/launcher.sh
 
 count=$(find "$tmp" -name 'snippet_*.applescript' | wc -l | tr -d ' ')
-if [ "$count" -ne 2 ]; then
-  echo "fail: expected 2 embedded AppleScript snippets, found $count"
+if [ "$count" -ne 4 ]; then
+  echo "fail: expected 4 embedded AppleScript snippets, found $count"
   exit 1
 fi
 
@@ -79,6 +79,40 @@ if PATH="$shim:$PATH" bash src/launcher.sh --herdr-running; then
   exit 1
 fi
 echo "ok: --herdr-running reflects the herdr process state"
+
+# A Dock click with herdr already running must focus, not launch: with a
+# fake process table describing herdr alive in an iTerm2 window,
+# --launch-and-wait has to exit 0 after an osascript call carrying the
+# session's tty, before any terminal-launching code runs.
+printf '#!/bin/sh\necho 42\n' > "$shim/pgrep"
+cat > "$shim/ps" <<'SH'
+#!/bin/sh
+case "$2:$4" in
+  "tty=:42")  echo "ttys003" ;;
+  "comm=:42") echo "herdr" ;;
+  "ppid=:42") echo "41" ;;
+  "comm=:41") echo "-zsh" ;;
+  "ppid=:41") echo "40" ;;
+  "comm=:40") echo "/Applications/iTerm.app/Contents/MacOS/iTerm2" ;;
+  *) exit 1 ;;
+esac
+SH
+cat > "$shim/osascript" <<SH
+#!/bin/sh
+printf '%s\n' "\$@" > "$tmp/osascript.args"
+cat >/dev/null
+SH
+chmod +x "$shim/pgrep" "$shim/ps" "$shim/osascript"
+if ! PATH="$shim:$PATH" bash src/launcher.sh --launch-and-wait; then
+  echo "fail: --launch-and-wait should focus and exit 0 while herdr runs"
+  exit 1
+fi
+if ! grep -q "ttys003" "$tmp/osascript.args"; then
+  echo "fail: the focus call should receive the herdr session's tty"
+  exit 1
+fi
+rm -f "$shim/ps" "$shim/osascript"
+echo "ok: --launch-and-wait focuses the running session"
 
 # The build must produce a complete, valid applet bundle.
 ./build.sh >/dev/null
@@ -159,5 +193,74 @@ if ! (pgrep() { return 0; }; wait_for_herdr); then
   exit 1
 fi
 echo "ok: wait_for_herdr waits, then gives up"
+
+# terminal_of_pid and focus_herdr back the focus-instead-of-relaunch
+# behavior; fake ps/pgrep/focus functions stand in for the live system.
+# shellcheck disable=SC2329
+if ! (
+  ps() {
+    case "$2:$4" in
+      "comm=:42") echo "herdr" ;;
+      "ppid=:42") echo "41" ;;
+      "comm=:41") echo "/Applications/Ghostty.app/Contents/MacOS/ghostty" ;;
+      *) return 1 ;;
+    esac
+  }
+  [ "$(terminal_of_pid 42)" = "ghostty" ]
+); then
+  echo "fail: terminal_of_pid should name the terminal in the ancestry"
+  exit 1
+fi
+# shellcheck disable=SC2329
+if (
+  ps() {
+    case "$2:$4" in
+      "comm=:42") echo "herdr" ;;
+      "ppid=:42") echo "1" ;;
+      *) return 1 ;;
+    esac
+  }
+  terminal_of_pid 42
+); then
+  echo "fail: terminal_of_pid should fail with no terminal ancestor"
+  exit 1
+fi
+# shellcheck disable=SC2329
+if ! (
+  pgrep() { echo 42; }
+  ps() { echo "ttys009"; }
+  terminal_of_pid() { echo "iterm"; }
+  focus_iterm() { [ "$1" = "ttys009" ]; }
+  focus_herdr
+); then
+  echo "fail: focus_herdr should focus iTerm2 with the session's tty"
+  exit 1
+fi
+# shellcheck disable=SC2329
+if ! (
+  pgrep() { echo 42; }
+  ps() { echo "ttys009"; }
+  terminal_of_pid() { echo "ghostty"; }
+  open() { [ "$1" = "-a" ] && [ "$2" = "Ghostty" ]; }
+  focus_herdr
+); then
+  echo "fail: focus_herdr should activate unscriptable terminals via open -a"
+  exit 1
+fi
+# shellcheck disable=SC2329
+if (pgrep() { return 1; }; focus_herdr); then
+  echo "fail: focus_herdr should fail with no herdr process"
+  exit 1
+fi
+# shellcheck disable=SC2329
+if (
+  pgrep() { echo 42; }
+  ps() { echo "??"; }
+  focus_herdr
+); then
+  echo "fail: focus_herdr should fail when herdr has no controlling tty"
+  exit 1
+fi
+echo "ok: focus helpers pick the right window mechanism"
 
 echo "all checks passed"
