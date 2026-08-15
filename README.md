@@ -1,6 +1,6 @@
 # Herdr Launcher
 
-A Dock icon for [herdr](https://herdr.dev/). Click the ram, get herdr: a new terminal window when none is running, the window you already have brought back to the front when one is — and the Dock's running dot while herdr is up.
+A Dock icon for [herdr](https://herdr.dev/). Click the ram, get herdr: a new terminal window when none is running, your existing window brought back to the front when one is — and the Dock's running dot while herdr is up.
 
 > **This is not the official herdr launcher.** It is a community project, not affiliated with or endorsed by the herdr team. herdr itself, its name, and the ram logo belong to the [herdr project](https://github.com/ogulcancelik/herdr).
 
