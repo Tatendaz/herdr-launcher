@@ -3,9 +3,10 @@
 #
 # Modes:
 #   (none)             launch herdr in the chosen terminal, then exit
-#   --launch-and-wait  launch, then block until a herdr process exists or a
-#                      timeout passes; the applet calls this so its idle
-#                      poll cannot fire before herdr is up
+#   --launch-and-wait  bring the running herdr session's window forward, or
+#                      when there is none, launch and block until a herdr
+#                      process exists or a timeout passes; the applet calls
+#                      this for every Dock click
 #   --herdr-running    exit 0 while the user has a herdr process, else 1
 #
 # Terminal selection, in order:
@@ -144,6 +145,37 @@ end run
 EOS
 }
 
+# Jump to the iTerm2 window, tab, and split pane whose session owns the
+# given tty. Errors when no session matches, so the caller can fall back.
+focus_iterm() {
+  osascript - "$1" <<'EOS'
+on run argv
+  set shortTty to item 1 of argv
+  set fullTty to "/dev/" & shortTty
+  tell application "iTerm"
+    repeat with w in windows
+      repeat with t in tabs of w
+        repeat with s in sessions of t
+          set sessionTty to tty of s
+          if sessionTty is fullTty or sessionTty is shortTty then
+            try
+              set miniaturized of w to false
+            end try
+            select w
+            select t
+            select s
+            activate
+            return
+          end if
+        end repeat
+      end repeat
+    end repeat
+  end tell
+  error "no iTerm2 session on " & fullTty
+end run
+EOS
+}
+
 # Terminal.app. When it is not running, the tell block launches it and that
 # launch creates window 1; reuse it instead of opening a second window.
 run_terminal_app() {
@@ -162,6 +194,76 @@ end run
 EOS
 }
 
+# Jump to the Terminal.app window and tab whose shell owns the given tty.
+# Errors when no tab matches, so the caller can fall back.
+focus_terminal_app() {
+  osascript - "$1" <<'EOS'
+on run argv
+  set shortTty to item 1 of argv
+  set fullTty to "/dev/" & shortTty
+  tell application "Terminal"
+    repeat with w in windows
+      repeat with t in tabs of w
+        set tabTty to tty of t
+        if tabTty is fullTty or tabTty is shortTty then
+          set selected tab of w to t
+          try
+            set miniaturized of w to false
+          end try
+          set frontmost of w to true
+          activate
+          return
+        end if
+      end repeat
+    end repeat
+  end tell
+  error "no Terminal tab on " & fullTty
+end run
+EOS
+}
+
+# The terminal application hosting a process: walk up the parent chain until
+# a known terminal's bundle shows up. GUI apps report their binary's full
+# path in comm, so the .app directory name is the tell (iTerm2's session-
+# restoration server lives outside iTerm.app and is correctly walked past).
+# Fails for sessions with no terminal ancestor, e.g. a detached tmux server.
+terminal_of_pid() {
+  local pid="$1" comm
+  while [ -n "$pid" ] && [ "$pid" != "0" ] && [ "$pid" != "1" ]; do
+    comm="$(ps -o comm= -p "$pid" 2>/dev/null)" || return 1
+    case "$comm" in
+      */iTerm.app/*)     echo "iterm";     return 0 ;;
+      */Ghostty.app/*)   echo "ghostty";   return 0 ;;
+      */WezTerm.app/*)   echo "wezterm";   return 0 ;;
+      */kitty.app/*)     echo "kitty";     return 0 ;;
+      */Alacritty.app/*) echo "alacritty"; return 0 ;;
+      */Terminal.app/*)  echo "terminal";  return 0 ;;
+    esac
+    pid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')"
+  done
+  return 1
+}
+
+# Surface the newest herdr session instead of opening another one: find its
+# controlling tty, find the terminal hosting it, and bring that forward.
+# iTerm2 and Terminal.app can jump to the exact tab; the other four have no
+# AppleScript interface, so their whole app is activated. Fails when there
+# is nothing to focus, and the caller falls back to a fresh launch.
+focus_herdr() {
+  local pid tty term
+  pid="$(pgrep -n -U "$(id -u)" -x herdr)" || return 1
+  tty="$(ps -o tty= -p "$pid" 2>/dev/null | tr -d ' ')"
+  case "$tty" in
+    "" | "??") return 1 ;;
+  esac
+  term="$(terminal_of_pid "$pid")" || return 1
+  case "$term" in
+    iterm)    focus_iterm "$tty" >/dev/null 2>&1 ;;
+    terminal) focus_terminal_app "$tty" >/dev/null 2>&1 ;;
+    *)        open -a "$(display_name "$term")" 2>/dev/null ;;
+  esac
+}
+
 # When sourced for tests, stop here: definitions only, no side effects.
 # The exit runs only when the script is executed, where return is invalid.
 # shellcheck disable=SC2317
@@ -174,6 +276,14 @@ fi
 if [ "${1:-}" = "--herdr-running" ]; then
   herdr_running
   exit
+fi
+
+# Dock clicks land here. While a herdr session exists, bring its window
+# forward instead of stacking another one on it; only when nothing can be
+# focused does the click fall through to a fresh launch. Running launcher.sh
+# with no argument still always opens a new window.
+if [ "${1:-}" = "--launch-and-wait" ] && focus_herdr; then
+  exit 0
 fi
 
 HERDR_BIN="$(find_herdr || true)"

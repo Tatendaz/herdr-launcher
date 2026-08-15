@@ -14,8 +14,9 @@ on launcherCommand(mode)
 	return quoted form of (POSIX path of (path to me) & "Contents/Resources/launcher.sh") & " " & mode
 end launcherCommand
 
--- Launch herdr and wait for its process, so the first idle poll cannot land
--- in the gap where the terminal is open but herdr has not started yet.
+-- Surface herdr: launcher.sh brings the running session's window forward,
+-- or launches herdr and waits for its process, so the first idle poll
+-- cannot land in the gap where the terminal is open but herdr is not up.
 on launchHerdr()
 	try
 		do shell script launcherCommand("--launch-and-wait")
@@ -30,7 +31,7 @@ on run
 end run
 
 -- A Dock click on a running app arrives as reopen: same contract as the
--- first click, another herdr window.
+-- first click — surface herdr, reusing the session already on screen.
 on reopen
 	launchHerdr()
 end reopen
