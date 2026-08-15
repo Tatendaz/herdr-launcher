@@ -24,7 +24,7 @@ cd herdr-launcher
 
 Then put it in the Dock: open `/Applications` in Finder and drag `Herdr` to the Dock, or launch it once and choose Options > Keep in Dock from its Dock menu.
 
-On first launch, macOS asks whether Herdr may control your terminal app. Click Allow. The permission lives under System Settings > Privacy & Security > Automation and is asked once.
+On first launch with iTerm2 or Terminal.app — the two terminals driven over AppleScript — macOS asks whether Herdr may control your terminal. Click Allow. The permission lives under System Settings > Privacy & Security > Automation and is asked once. The other four terminals are started with `open` and need no permission.
 
 ### Or let herdr install it
 
@@ -43,7 +43,7 @@ While herdr runs, the Dock tile carries the same running indicator as any other 
 Two edges worth knowing:
 
 - The dot tracks herdr processes, not windows: any number of sessions keep it lit, and it clears a few seconds after the last one ends.
-- herdr sessions started from a shell by hand do not light the dot; the indicator is the launcher process, and nothing started it. Right-clicking the Dock icon and choosing Quit removes the dot without touching running herdr sessions.
+- A herdr session started from a shell by hand cannot light the dot on its own — only clicking the icon starts the launcher process. While the launcher is already resident, though, every herdr session counts, hand-started ones included. Right-clicking the Dock icon and choosing Quit removes the dot without touching running herdr sessions.
 
 ## Which terminal it opens, and how to change it
 
@@ -84,7 +84,7 @@ If the Dock dot is showing, also right-click the icon and choose Quit; deleting 
 
 ## Adapting this for another CLI tool
 
-Nothing here is specific to herdr beyond two files: `src/launcher.sh` (the command it types, the paths it probes, and the process name `herdr_running` polls for the Dock dot) and `assets/icon-1024.png` (the Dock icon). Swap those, rename the bundle in `src/Info.plist` and `build.sh`, and rebuild; `src/main.applescript` is generic and needs no changes.
+Nothing here is specific to herdr beyond two files: `src/launcher.sh` (the command it types, the paths it probes, and the process name inside its `herdr_running` check, which is what the Dock dot tracks) and `assets/icon-1024.png` (the Dock icon). Swap those, rename the bundle in `src/Info.plist` and `build.sh`, and rebuild; `src/main.applescript` is generic and needs no changes.
 
 ## Icon
 
