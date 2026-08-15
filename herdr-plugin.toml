@@ -1,0 +1,25 @@
+# herdr workflow-plugin manifest — https://herdr.dev/docs/plugins/
+#
+# `herdr plugin install Tatendaz/herdr-launcher` clones this repo, shows the
+# commands below for confirmation, then runs the build step, which ends with
+# Herdr.app installed in /Applications.
+
+id = "tatendaz.herdr-launcher"
+name = "Herdr Launcher"
+version = "1.1.0"
+description = "macOS Dock icon for herdr: click the ram, get herdr in a new terminal window, with the Dock's running dot while herdr is up"
+min_herdr_version = "0.7.5"
+platforms = ["macos"]
+
+[[build]]
+command = ["./build.sh", "--install"]
+
+[[actions]]
+id = "install"
+title = "Build Herdr.app and install it to /Applications"
+command = ["./build.sh", "--install"]
+
+[[actions]]
+id = "uninstall"
+title = "Remove Herdr.app from /Applications"
+command = ["rm", "-rf", "/Applications/Herdr.app"]

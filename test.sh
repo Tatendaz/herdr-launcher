@@ -1,7 +1,8 @@
 #!/bin/bash
 # Gate checks: shell syntax, plist validity, AppleScript compilation, a full
-# build, and launcher table consistency. Needs only tools that ship with
-# macOS; shellcheck runs when installed. CI runs this via `make test`.
+# build, launcher table consistency, and the applet's launcher interface.
+# Needs only tools that ship with macOS; shellcheck runs when installed.
+# CI runs this via `make test`.
 
 set -euo pipefail
 cd "$(dirname "$0")" || exit 1
@@ -21,13 +22,24 @@ else
   echo "skip: shellcheck not installed"
 fi
 
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+# The applet source tells no application, so unlike the snippets below it
+# compiles on any macOS, CI runners included.
+osacompile -o "$tmp/main.scpt" src/main.applescript
+echo "ok: applet source compiles"
+
+# The applet is only glue around launcher.sh; if either applet-facing mode
+# stops being called, residency or quitting silently breaks.
+grep -q -- '--launch-and-wait' src/main.applescript
+grep -q -- '--herdr-running' src/main.applescript
+echo "ok: applet wired to both launcher modes"
+
 # Compile each AppleScript heredoc embedded in launcher.sh. Compilation
 # resolves the target app's scripting dictionary, so a snippet can only be
 # compiled where its app is present: Terminal.app always is, iTerm2 is not
 # on CI runners.
-tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
-
 awk -v dir="$tmp" '
   /<<'\''EOS'\''$/ { in_script = 1; n++; next }
   /^EOS$/          { in_script = 0; next }
@@ -50,13 +62,45 @@ for f in "$tmp"/snippet_*.applescript; do
   fi
 done
 
-# The build must produce a complete, valid bundle.
+# --herdr-running must answer from pgrep alone: before the herdr lookup,
+# with no config reads and no UI, so the applet's poll works even where
+# herdr is not installed (CI included).
+shim="$tmp/shim"
+mkdir -p "$shim"
+printf '#!/bin/sh\nexit 0\n' > "$shim/pgrep"
+chmod +x "$shim/pgrep"
+if ! PATH="$shim:$PATH" bash src/launcher.sh --herdr-running; then
+  echo "fail: --herdr-running should succeed while pgrep finds herdr"
+  exit 1
+fi
+printf '#!/bin/sh\nexit 1\n' > "$shim/pgrep"
+if PATH="$shim:$PATH" bash src/launcher.sh --herdr-running; then
+  echo "fail: --herdr-running should fail when pgrep finds nothing"
+  exit 1
+fi
+echo "ok: --herdr-running reflects the herdr process state"
+
+# The build must produce a complete, valid applet bundle.
 ./build.sh >/dev/null
 test -x dist/Herdr.app/Contents/MacOS/herdr-launcher
+test -f dist/Herdr.app/Contents/Resources/Scripts/main.scpt
+test -x dist/Herdr.app/Contents/Resources/launcher.sh
 test -f dist/Herdr.app/Contents/Resources/Herdr.icns
+test ! -e dist/Herdr.app/Contents/Resources/applet.icns
+test ! -e dist/Herdr.app/Contents/Resources/Assets.car
 plutil -lint dist/Herdr.app/Contents/Info.plist >/dev/null
+if [ "$(plutil -extract OSAAppletStayOpen raw dist/Herdr.app/Contents/Info.plist)" != "true" ]; then
+  echo "fail: OSAAppletStayOpen must be true, or the applet exits at once"
+  exit 1
+fi
+# The Dock only draws its running indicator for regular apps, which is the
+# point of the applet: LSUIElement has to stay out of the plist.
+if plutil -extract LSUIElement raw dist/Herdr.app/Contents/Info.plist >/dev/null 2>&1; then
+  echo "fail: LSUIElement is set; it would hide the Dock running indicator"
+  exit 1
+fi
 codesign --verify --strict dist/Herdr.app
-echo "ok: build.sh produces a complete, signed bundle"
+echo "ok: build.sh produces a complete, signed applet bundle"
 
 # Launcher tables, exercised as functions: every supported terminal needs a
 # display name, a config mapping that round-trips, and a launch branch.
@@ -100,5 +144,20 @@ if [ "$last" != "terminal" ]; then
   exit 1
 fi
 echo "ok: terminal tables consistent"
+
+# wait_for_herdr backs the applet's --launch-and-wait grace period.
+# Subshells keep the fake pgrep from leaking into anything else; the fakes
+# are invoked through herdr_running, which shellcheck cannot see.
+# shellcheck disable=SC2329
+if (pgrep() { return 1; }; HERDR_LAUNCH_WAIT_SECS=1; wait_for_herdr); then
+  echo "fail: wait_for_herdr should time out when herdr never appears"
+  exit 1
+fi
+# shellcheck disable=SC2329
+if ! (pgrep() { return 0; }; wait_for_herdr); then
+  echo "fail: wait_for_herdr should return once herdr is running"
+  exit 1
+fi
+echo "ok: wait_for_herdr waits, then gives up"
 
 echo "all checks passed"

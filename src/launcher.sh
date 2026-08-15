@@ -1,6 +1,13 @@
 #!/bin/bash
 # Herdr.app — opens the herdr TUI in the user's terminal. macOS only.
 #
+# Modes:
+#   (none)             launch herdr in the chosen terminal, then exit
+#   --launch-and-wait  launch, then block until a herdr process exists or a
+#                      timeout passes; the applet calls this so its idle
+#                      poll cannot fire before herdr is up
+#   --herdr-running    exit 0 while the user has a herdr process, else 1
+#
 # Terminal selection, in order:
 #   1. ~/.config/herdr-launcher/terminal (one word: iterm | ghostty | wezterm |
 #      kitty | alacritty | terminal), when it names an installed terminal.
@@ -23,6 +30,28 @@ find_herdr() {
     fi
   done
   command -v herdr 2>/dev/null
+}
+
+# The applet stays resident exactly as long as herdr runs; that residency is
+# what lights the Dock's running indicator. Matching by name rather than PID
+# counts every herdr session of this user, including ones the launcher did
+# not start.
+herdr_running() {
+  pgrep -U "$(id -u)" -x herdr >/dev/null 2>&1
+}
+
+# Launches can take a while to produce a herdr process (terminal cold start,
+# shell rc files), and the applet must not read that gap as "herdr quit".
+wait_for_herdr() {
+  local waited=0
+  while [ "$waited" -lt "${HERDR_LAUNCH_WAIT_SECS:-30}" ]; do
+    if herdr_running; then
+      return 0
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  return 1
 }
 
 app_installed() {
@@ -140,6 +169,13 @@ if [ "${HERDR_LAUNCHER_LIB:-0}" = "1" ]; then
   return 0 2>/dev/null || exit 0
 fi
 
+# Liveness probe for the applet. Handled before the herdr lookup so the
+# answer stays correct (and cheap) even when herdr was uninstalled.
+if [ "${1:-}" = "--herdr-running" ]; then
+  herdr_running
+  exit
+fi
+
 HERDR_BIN="$(find_herdr || true)"
 if [ -z "$HERDR_BIN" ]; then
   show_alert "herdr is not installed" "Install it first:
@@ -214,3 +250,9 @@ case "$TERMINAL" in
     fi
     ;;
 esac
+
+# For the applet: report success only once herdr's process is visible, so
+# the resident watcher starts from a true "running" state.
+if [ "${1:-}" = "--launch-and-wait" ]; then
+  wait_for_herdr || exit 1
+fi
