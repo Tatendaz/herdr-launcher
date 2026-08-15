@@ -84,7 +84,7 @@ If the Dock dot is showing, also right-click the icon and choose Quit; deleting 
 
 ## Adapting this for another CLI tool
 
-Nothing here is specific to herdr beyond two files: `src/launcher.sh` (the command it types, the paths it probes, and the process name inside its `herdr_running` check, which is what the Dock dot tracks) and `assets/icon-1024.png` (the Dock icon). Swap those, rename the bundle in `src/Info.plist` and `build.sh`, and rebuild; `src/main.applescript` is generic and needs no changes.
+Nothing here is specific to herdr beyond three files: `src/launcher.sh` (the command it types, the paths it probes, and the process name inside its `herdr_running` check, which is what the Dock dot tracks), `assets/icon-1024.png` (the Dock icon), and `herdr-plugin.toml` (the herdr plugin manifest — rewrite it for your tool's ecosystem, or delete it). Swap those, rename the bundle in `src/Info.plist` and `build.sh`, and rebuild; `src/main.applescript` is generic and needs no changes.
 
 ## Icon
 
