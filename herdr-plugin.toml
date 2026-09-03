@@ -6,7 +6,7 @@
 
 id = "tatendaz.herdr-launcher"
 name = "Herdr Launcher"
-version = "1.2.0"
+version = "1.2.1"
 description = "macOS Dock icon for herdr: click the ram to surface your running herdr session, or open one in a new terminal window, with the Dock's running dot while herdr is up"
 min_herdr_version = "0.7.5"
 platforms = ["macos"]
